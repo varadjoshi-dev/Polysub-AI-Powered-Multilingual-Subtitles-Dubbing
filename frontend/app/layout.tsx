@@ -15,11 +15,27 @@ const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
 })
 
+// export const metadata: Metadata = {
+//   title: "PolySub – AI Multilingual Subtitles & Dubbing",
+//   description: "Translate, subtitle, and dub your videos in 200+ languages instantly.",
+//   generator: "Varad",
+// }
+
 export const metadata: Metadata = {
   title: "PolySub – AI Multilingual Subtitles & Dubbing",
   description: "Translate, subtitle, and dub your videos in 200+ languages instantly.",
   generator: "Varad",
+  icons: {
+    icon: [
+      { url: "/favicon.ico", type: "image/x-icon" },
+      { url: "/favicon-96x96.png", type: "image/png", sizes: "96x96" },
+      { url: "/favicon.svg", type: "image/svg+xml" },
+    ],
+    apple: "/apple-touch-icon.png",
+  },
+  manifest: "/site.webmanifest",
 }
+
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
