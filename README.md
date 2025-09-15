@@ -55,35 +55,41 @@ pnpm dev
 pnpm build
 
 # Start production server
-pnpm start
+pnpm start**
 
 
+📊 Evaluation
 
-## 📊 Evaluation
-- ✅ Word Error Rate (WER) for transcription accuracy  
-- ✅ BLEU Score for translation quality  
-- ✅ MOS (Mean Opinion Score) for dubbing naturalness  
+✅ Word Error Rate (WER) for transcription accuracy
 
----
+✅ BLEU Score for translation quality
 
-## 🗺 Roadmap
-- 🧑‍🤝‍🧑 Add speaker diarization (multi-speaker support)  
-- 📡 Add support for live streaming input  
-- ☁️ Cloud storage integration (Google Drive, Dropbox)  
-- 🗣 More dubbing voices (custom voice cloning)  
+✅ MOS (Mean Opinion Score) for dubbing naturalness
 
+🗺 Roadmap
+
+🧑‍🤝‍🧑 Add speaker diarization (multi-speaker support)
+
+📡 Add support for live streaming input
+
+☁️ Cloud storage integration (Google Drive, Dropbox)
+
+🗣 More dubbing voices (custom voice cloning)
 
 🙌 Acknowledgements
 
 🧠 OpenAI Whisper – Speech recognition
+
 🌐 Meta NLLB – Multilingual translation
+
 🔊 Microsoft edge-tts – Natural voice synthesis
+
 🎬 FFmpeg – Media processing
 
-
-
 📜 License
+
 This project is licensed under the MIT License.
 
 👨‍💻 Author
+
 Built with ❤️ by Varad Joshi
