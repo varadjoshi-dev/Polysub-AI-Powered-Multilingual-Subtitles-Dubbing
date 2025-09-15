@@ -3,19 +3,13 @@
 **PolySub – AI-Powered Multilingual Subtitles & Dubbing**  
 Translate, subtitle, and dub your videos in 200+ languages instantly.  
 
-🔗 **Live Demo:** [polysub.netlify.app](https://polysub.netlify.app)  
-
----
-
+🔗 **Live Demo:** [polysub.netlify.app](https://polysub.netlify.app)  ## 🚀 How It Works
 ## 🚀 How It Works
-1. 📤 Upload a video  
-2. 🎙 Speech Recognition (OpenAI Whisper)  
-3. 🌐 Translation (Meta’s NLLB)  
-4. 📝 Subtitle Generation  
-5. 🗣 Dubbing (Microsoft Neural TTS via edge-tts)  
-6. 📥 Download fully processed video  
-
----
+ - 📤 Upload a video  
+ - 🎙 Speech Recognition (OpenAI Whisper)  
+ - 🌐 Translation (Meta’s NLLB)  
+ - 📝 Subtitle Generation  . 🗣 Dubbing (Microsoft Neural TTS via edge-tts)  
+- 📥 Download fully processed video  
 
 ## ✨ Features
 - 🎥 Upload videos in `.mp4`, `.mov`, `.avi`, `.mkv` formats  
@@ -26,7 +20,6 @@ Translate, subtitle, and dub your videos in 200+ languages instantly.
 - 🔊 Optional real-time subtitles (for streaming/meetings)  
 - ♿ Accessibility support for Deaf/Hard-of-Hearing users  
 
----
 
 ## 🛠 Tech Stack
 - **Frontend:** Next.js, React, TailwindCSS  
@@ -34,62 +27,48 @@ Translate, subtitle, and dub your videos in 200+ languages instantly.
 - **Media Processing:** FFmpeg  
 - **Deployment:** Netlify  
 
----
-
 ## 📦 Installation (Local Setup)
+Install my-project with npm
 
 ```bash
 # Clone repository
 git clone https://github.com/varadjoshi08/Polysub-AI-Powered-Multilingual-Subtitles-Dubbing.git
+```
 
+```bash
 # Go into project folder
 cd Polysub-AI-Powered-Multilingual-Subtitles-Dubbing/frontend
-
+```
+```bash
 # Install dependencies
 pnpm install
+```
 
+```bash
 # Start development server
 pnpm dev
+```
 
+```bash
 # Build for production
 pnpm build
-
+```
+```bash
 # Start production server
-pnpm start**
+pnpm start
+```
 
 
-📊 Evaluation
+    
+## 📊 Evaluation
+- ✅ **Word Error Rate (WER):** transcription accuracy  
+- ✅ **BLEU Score:** translation quality  
+- ⏱ **Latency:** processing & response speed  
+- 📝 **Subtitle Sync Score:** alignment accuracy between audio & subtitles  
+## Acknowledgements
 
-✅ Word Error Rate (WER) for transcription accuracy
+ - [🧠 OpenAI Whisper – Speech recognition](https://github.com/openai/whisper)
+ - [🌐 Meta NLLB – Multilingual translation](https://ai.meta.com/research/no-language-left-behind/)
+ - [🔊 Microsoft edge-tts – Natural voice synthesis](https://github.com/rany2/edge-tts)
+ - [🎬 FFmpeg – Media processing](https://ffmpeg.org/)
 
-✅ BLEU Score for translation quality
-
-✅ MOS (Mean Opinion Score) for dubbing naturalness
-
-🗺 Roadmap
-
-🧑‍🤝‍🧑 Add speaker diarization (multi-speaker support)
-
-📡 Add support for live streaming input
-
-☁️ Cloud storage integration (Google Drive, Dropbox)
-
-🗣 More dubbing voices (custom voice cloning)
-
-🙌 Acknowledgements
-
-🧠 OpenAI Whisper – Speech recognition
-
-🌐 Meta NLLB – Multilingual translation
-
-🔊 Microsoft edge-tts – Natural voice synthesis
-
-🎬 FFmpeg – Media processing
-
-📜 License
-
-This project is licensed under the MIT License.
-
-👨‍💻 Author
-
-Built with ❤️ by Varad Joshi
