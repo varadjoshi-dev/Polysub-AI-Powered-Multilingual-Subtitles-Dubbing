@@ -81,7 +81,7 @@ export default function Page() {
               transition={{ duration: 0.6, delay: 0.1, ease: "easeOut" }}
             >
               <div className="aspect-video w-full overflow-hidden rounded-lg border bg-muted">
-                <img src="/landing-preview-image.png" alt="Video preview frame" className="h-full w-full object-cover" />
+                <img src="/You_Tube_Script_with_AI_1_a0f005313e.png" alt="Video preview frame" className="h-full w-full object-cover" />
               </div>
               <div className="mt-4 grid grid-cols-3 gap-3 text-sm text-foreground/80">
                 <span className="rounded-md border px-3 py-2 text-center">Hindi</span>
