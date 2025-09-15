@@ -1,9 +1,9 @@
-# 🌍 PolySub  
+# ✨ PolySub – AI-Powered Multilingual Subtitles & Dubbing
 
 **PolySub – AI-Powered Multilingual Subtitles & Dubbing**  
 Translate, subtitle, and dub your videos in 200+ languages instantly.  
 
-🔗 **Live Demo:** [polysub.netlify.app](https://polysub.netlify.app)  ## 🚀 How It Works
+🔗 **Live Demo:** [polysub.netlify.app](https://polysub.netlify.app)  
 ## 🚀 How It Works
  - 📤 Upload a video  
  - 🎙 Speech Recognition (OpenAI Whisper)  
@@ -16,10 +16,8 @@ Translate, subtitle, and dub your videos in 200+ languages instantly.
 - 🎙 Accurate speech-to-text transcription (**OpenAI Whisper**)  
 - 🌐 Translation into **200+ languages** (Meta’s **NLLB**)  
 - 🗣 Natural dubbing with **edge-tts** (Microsoft Neural TTS)  
-- 📄 Export subtitles in `.srt`, `.vtt`, `.txt` formats  
+- 📄 Export subtitles in `.srt` formats  
 - 🔊 Optional real-time subtitles (for streaming/meetings)  
-- ♿ Accessibility support for Deaf/Hard-of-Hearing users  
-
 
 ## 🛠 Tech Stack
 - **Frontend:** Next.js, React, TailwindCSS  
@@ -28,8 +26,6 @@ Translate, subtitle, and dub your videos in 200+ languages instantly.
 - **Deployment:** Netlify  
 
 ## 📦 Installation (Local Setup)
-Install my-project with npm
-
 ```bash
 # Clone repository
 git clone https://github.com/varadjoshi08/Polysub-AI-Powered-Multilingual-Subtitles-Dubbing.git
@@ -64,9 +60,9 @@ pnpm start
 - ✅ **Word Error Rate (WER):** transcription accuracy  
 - ✅ **BLEU Score:** translation quality  
 - ⏱ **Latency:** processing & response speed  
-- 📝 **Subtitle Sync Score:** alignment accuracy between audio & subtitles  
+- 📝 **Subtitle Sync Score:** alignment accuracy between audio & subtitles
+  
 ## Acknowledgements
-
  - [🧠 OpenAI Whisper – Speech recognition](https://github.com/openai/whisper)
  - [🌐 Meta NLLB – Multilingual translation](https://ai.meta.com/research/no-language-left-behind/)
  - [🔊 Microsoft edge-tts – Natural voice synthesis](https://github.com/rany2/edge-tts)
