@@ -32,7 +32,7 @@ export function Evaluation({ jobId }: { jobId: string }) {
 
   return (
     <section className="space-y-6">
-      <div className="rounded-xl border bg-background/60 p-4">
+      {/* <div className="rounded-xl border bg-background/60 p-4">
         <h3 className="text-base font-semibold">Automated Metrics</h3>
         <div className="mt-4 grid gap-4 sm:grid-cols-2 md:grid-cols-4">
           <Metric label="BLEU Score" value={`${bleu}`} />
@@ -40,7 +40,7 @@ export function Evaluation({ jobId }: { jobId: string }) {
           <Metric label="Latency" value={`${latency.toFixed(1)}`} unit="× video length" />
           <Metric label="Subtitle Sync Score" value={`${sync}`} />
         </div>
-      </div>
+      </div> */}
 
       <div className="rounded-xl border bg-background/60 p-4">
         <h3 className="text-base font-semibold">Your Feedback</h3>
