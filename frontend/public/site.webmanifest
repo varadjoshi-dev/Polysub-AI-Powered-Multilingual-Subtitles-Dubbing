@@ -1,6 +1,6 @@
 {
-  "name": "MyWebSite",
-  "short_name": "MySite",
+  "name": "PolySub – AI Multilingual Subtitles & Dubbing",
+  "short_name": "PolySub",
   "icons": [
     {
       "src": "/web-app-manifest-192x192.png",
