@@ -1,0 +1,8 @@
+openai-whisper
+edge-tts
+pydub
+tqdm
+transformers
+sentencepiece
+sacremoses
+ffmpeg
