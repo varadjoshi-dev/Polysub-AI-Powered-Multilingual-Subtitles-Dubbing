@@ -14,13 +14,28 @@ export default function ResultsPage() {
 
   const [job, setJob] = useState<JobData | null>(null)
 
-  useEffect(() => {
-    const raw = sessionStorage.getItem("polysub_job")
-    if (raw) {
-      const parsed = JSON.parse(raw)
-      if (parsed?.id === jobId || !jobId) setJob(parsed)
+  const pollJobStatus = async (jobId: string) => {
+      try {
+        const res = await fetch(`http://localhost:5000/api/status/${jobId}`)
+        if (!res.ok) throw new Error("Failed to fetch job status")
+        const data = await res.json()
+        return data
+      } catch (err) {
+        console.error(err)
+        return null
+      }
     }
-  }, [jobId])
+
+  useEffect(() => {
+      const fetchJob = async () => {
+        const result = await pollJobStatus(jobId)   // REST call
+        if (result) {
+          setJob(result)   // Save response in React state
+        }
+      }
+
+      fetchJob()
+    }, [jobId])
 
   const missing = useMemo(() => !job, [job])
 
