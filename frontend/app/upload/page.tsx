@@ -42,16 +42,43 @@ export default function UploadPage() {
     if (!canSubmit) return
     setSubmitting(true)
 
-    const job = {
-      id: Math.random().toString(36).slice(2),
-      filename: file?.file?.name || "demo-video.mp4",
-      size: file?.file?.size || 30_000_000,
-      langs,
-      opts: { generateSrt, enableTts, enableRealtime },
-      createdAt: Date.now(),
-    }
-    sessionStorage.setItem("polysub_job", JSON.stringify(job))
-    router.push(`/processing?job=${job.id}`)
+    const uploadedJob = JSON.parse(sessionStorage.getItem("uploadedFiles") || "{}")
+
+        if (!uploadedJob.path) {
+            console.error("No uploaded file found in sessionStorage")
+            return
+        }
+
+      const payload = {
+             filePath: uploadedJob.path,
+             jobId: uploadedJob.id,
+             enableTts,       // from state
+             generateSrt,     // from state
+             enableRealtime,  // from state
+             langs            // from state
+         }
+     try {
+        const res = await fetch("http://localhost:5000/api/process", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        })
+
+        if (!res.ok) throw new Error("Failed to start job")
+
+        const job = await res.json()
+
+        sessionStorage.setItem("polysub_job", JSON.stringify(job))
+
+        console.log("job response:", job);
+        // Navigate with jobId
+           router.push(`/processing?job=${job.id}`)
+         } catch (err) {
+           console.error(err)
+           alert("Something went wrong while starting processing.")
+         } finally {
+           setSubmitting(false)
+         }
   }
 
   return (

@@ -25,6 +25,7 @@ import io
 from pydub.utils import make_chunks
 import regex
 import shutil
+from jobs import jobs
 
 def split_caption_text_two_lines(text, max_chars=40):
     """
@@ -1227,6 +1228,167 @@ def generate_video_with_tts_audio(original_video, tts_audio_file, tgt_lang_nllb,
     print(f"TTS-only video created: {output_video}")
     return output_video
 
+def process(input_path, **kwargs):
+
+    job_id = kwargs.get("job_id")
+    enableTts = kwargs.get("enableTts", False)
+    enableRealtime = kwargs.get("enableRealtime", False)
+    generateSrt = kwargs.get("generateSrt", True)
+    target_lang = kwargs.get("target_lang", "hin_Deva")
+    model="large"
+    language=None
+    speed=1.0
+    no_dedupe=False
+    debug=False
+
+    if not os.path.isfile(input_path):
+        raise FileNotFoundError(f"Input not found: {input_path}")
+
+    base = safe_filename(os.path.splitext(os.path.basename(input_path))[0])
+
+    # init job
+    if job_id:
+        jobs[job_id]["status"] = "queued"
+        jobs[job_id]["progress"] = 0
+        jobs[job_id]["logs"] = []
+
+    def update(progress, status, message):
+        """Update job status & logs."""
+        if job_id:
+            jobs[job_id]["progress"] = progress
+            jobs[job_id]["status"] = status
+            jobs[job_id]["logs"].append(message)
+        print(f"[{job_id}] {message}")
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        audio_path = extract_audio_if_video(input_path, tmpdir)
+
+        # === Step 1: Transcription ===
+        update(10, "upload", "Running Whisper transcription...")
+        segments, detected_lang_iso2, words_global = transcribe_in_chunks(
+            audio_path, model_size=model, language=language, chunk_length_ms=30 * 1000
+        )
+        if not segments:
+            update(100, "failed", "No transcription returned. Job failed.")
+            jobs[job_id]["status"] = "failed"
+            return
+
+        src_lang_nllb = to_nllb_code(detected_lang_iso2 or "en")
+        update(20, "upload",f"Detected language: {detected_lang_iso2} → {src_lang_nllb}")
+
+        targets_raw = [x.strip() for x in target_lang.split(",")]
+        target_langs_nllb = [to_nllb_code(t) for t in targets_raw]
+
+        for tgt_lang_nllb in target_langs_nllb:
+            if tgt_lang_nllb == src_lang_nllb:
+                update(25, "asr",f"Skipping {tgt_lang_nllb}, same as source.")
+                continue
+
+            # === Step 2: Translation ===
+            update(50, "asr",f"Translating → {tgt_lang_nllb}")
+            try:
+                translated_segments = translate_segments_nllb(segments, src_lang_nllb, tgt_lang_nllb)
+            except Exception as e:
+                update(100, "failed",f"[WARN] Translation failed for {tgt_lang_nllb}: {e}")
+                jobs[job_id]["status"] = "failed"
+                return
+
+            # === Deduplication ===
+            if not no_dedupe:
+                for seg in translated_segments:
+                    seg["text"] = dedupe_translations(seg["text"], tgt_lang_nllb)
+
+            translated_segments = tidy_translated_segments(translated_segments)
+
+            # === Step 1: RAW translated SRT (segment-level) ===
+            update(60, "asr", "Generating SRT files...")
+            out_srt_raw = f"{base}_{tgt_lang_nllb}_raw.srt"
+            with open(out_srt_raw, "w", encoding="utf-8") as f:
+                f.write(segments_to_srt(translated_segments))
+            print(f"RAW SRT file created: {out_srt_raw}")
+
+            # 🔹 Fix long lines
+            split_long_subtitles(out_srt_raw, out_srt_raw, max_chars=40)
+
+            # === Step 2: Final refined SRT ===
+            out_srt_final = f"{base}_{tgt_lang_nllb}_final.srt"
+            shutil.copy(out_srt_raw, out_srt_final)
+            refine_srt(out_srt_final, out_srt_final, lang_hint=tgt_lang_nllb)
+            print(f"Final refined SRT created: {out_srt_final}")
+            update(75, "translate", "refined SRT created...")
+
+            # Convert FINAL SRT → ASS
+            ass_file_final = out_srt_final.replace(".srt", ".ass")
+            convert_srt_to_ass(out_srt_final, ass_file_final, tgt_lang_nllb)
+
+            # === Step 3: Burn video with FINAL refined subs ===
+
+#             if()
+
+            out_video_subs = f"{base}_{tgt_lang_nllb}_subs.mp4"
+            cmd_subs = [
+                "ffmpeg", "-y",
+                "-i", input_path,
+                "-vf", f"ass={ass_file_final}",
+                "-c:v", "libx264", "-preset", "fast",
+                "-c:a", "copy",
+                out_video_subs
+            ]
+            subprocess.run(cmd_subs, check=True)
+            update(80, "translate","Video with refined subtitles created...")
+            print(f"Video with refined subtitles created: {out_video_subs}")
+
+            # === Step 4: Generate TTS audio from refined subs ===
+            update(80, "subtitle","Burning subtitles into video...")
+            subs = pysubs2.load(out_srt_final, encoding="utf-8")
+            full_text = " ".join([sub.text.strip() for sub in subs if sub.text.strip()])
+            full_text = collapse_repeated_runs_in_text(full_text)
+
+            tts_model = get_tts_model(tgt_lang_nllb)
+            wav_out = tts_model.synthesis(full_text)
+            y = wav_out["x"]
+            sr = int(wav_out["sampling_rate"])
+            if y.ndim > 1:
+                y = y.mean(axis=1)
+            y = y / max(1.0, np.max(np.abs(y))) * 0.9
+            tensor_int16 = (y * 32767).astype(np.int16)
+            tts_audio = AudioSegment(tensor_int16.tobytes(), frame_rate=sr, sample_width=2, channels=1)
+            tts_audio = AudioSegment.silent(duration=200) + tts_audio + AudioSegment.silent(duration=300)
+            if len(tts_audio) > 160:
+                tts_audio = tts_audio.fade_in(80).fade_out(80)
+            tts_audio = effects.normalize(tts_audio, headroom=3.0)
+
+            probe = ffmpeg.probe(input_path)
+            video_duration = float(probe['format']['duration']) * 1000
+            tts_audio = speedup_audio_to_fit_segment(tts_audio, int(video_duration))
+
+            tts_audio_io = io.BytesIO()
+            tts_audio.export(tts_audio_io, format="mp3")
+            tts_audio_io.seek(0)
+
+            out_video_tts = f"{base}_{tgt_lang_nllb}_tts.mp4"
+            cmd_tts = [
+                "ffmpeg", "-y", "-i", input_path, "-i", "pipe:0",
+                "-map", "0:v:0", "-map", "1:a:0",
+                "-vf", f"ass={ass_file_final}",   # ✅ always use final refined subs
+                "-c:v", "libx264", "-preset", "fast",
+                "-c:a", "aac", "-b:a", "192k", "-shortest", out_video_tts
+            ]
+            process = subprocess.Popen(cmd_tts, stdin=subprocess.PIPE)
+            process.communicate(tts_audio_io.read())
+            print(f"TTS video created (refined subs burned in): {out_video_tts}")
+
+            # === Summary ===
+            print(f"[DONE] {tgt_lang_nllb}:")
+            print(f" → Final refined SRT: {out_srt_final}")
+            print(f" → Video with refined subs: {out_video_subs}")
+            print(f" → TTS Video with refined subs: {out_video_tts}")
+
+        jobs[job_id]["progress"] = 100
+        jobs[job_id]["status"] = "done"
+        update(100, "✅ Job finished successfully")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Whisper → NLLB → MMS TTS → Burn-in")
     parser.add_argument("input", help="Input video/audio path")
@@ -1355,6 +1517,7 @@ def main():
             print(f" → Final refined SRT: {out_srt_final}")
             print(f" → Video with refined subs: {out_video_subs}")
             print(f" → TTS Video with refined subs: {out_video_tts}")
+
 
 if __name__ == "__main__":
     main()
