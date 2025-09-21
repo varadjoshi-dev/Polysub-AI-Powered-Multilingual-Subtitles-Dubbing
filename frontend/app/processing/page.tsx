@@ -11,10 +11,21 @@ import { useRouter, useSearchParams } from "next/navigation"
 type Step = { key: string; label: string; icon: React.ReactNode }
 
 const steps: Step[] = [
+  { key: "upload", label: "Upload File", icon: <Mic2 className="h-4 w-4" /> },
   { key: "asr", label: "Speech Recognition", icon: <Mic2 className="h-4 w-4" /> },
   { key: "translate", label: "Translation", icon: <Languages className="h-4 w-4" /> },
   { key: "subtitle", label: "Subtitle Generation", icon: <FileText className="h-4 w-4" /> },
 ]
+
+// Map backend status to progress percent
+const stepStatusMap: Record<string, number> = {
+  queued: 0,
+  upload: 25,
+  asr: 50,
+  translate: 75,
+  subtitle: 100,
+  done: 100,
+}
 
 export default function ProcessingPage() {
   const router = useRouter()
@@ -23,30 +34,46 @@ export default function ProcessingPage() {
 
   const [progress, setProgress] = useState(0)
   const [stepIndex, setStepIndex] = useState(0)
-  const timerRef = useRef<number | null>(null)
 
+  const pollJobStatus = async (jobId: string) => {
+    try {
+      const res = await fetch(`http://localhost:5000/api/status/${jobId}`)
+      if (!res.ok) throw new Error("Failed to fetch job status")
+      const data = await res.json()
+      return data
+    } catch (err) {
+      console.error(err)
+      return null
+    }
+  }
+
+  // ETA calculation (estimate)
   const eta = useMemo(() => {
     const remain = Math.max(0, 100 - progress)
-    return Math.ceil((remain / 10) * 0.6) // fake ETA
+    const rate = 10 // estimate % per interval
+    return Math.ceil((remain / rate) * 2) // 2s per interval
   }, [progress])
 
-  useEffect(() => {
-    timerRef.current = window.setInterval(() => {
-      setProgress((p) => {
-        const next = Math.min(100, p + Math.ceil(Math.random() * 8))
-        const idx = Math.min(steps.length - 1, Math.floor((next / 100) * steps.length))
-        setStepIndex(idx)
-        if (next >= 100) {
-          if (timerRef.current) clearInterval(timerRef.current)
-          setTimeout(() => router.push(`/results?job=${jobId}`), 800)
-        }
-        return next
-      })
-    }, 600)
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current)
-    }
-  }, [router, jobId])
+ useEffect(() => {
+    if (!jobId) return
+
+    const interval = setInterval(async () => {
+      const job = await pollJobStatus(jobId)
+      if (!job) return
+
+      const prog = stepStatusMap[job.status] ?? 0
+      setProgress(prog)
+      setStepIndex(prog/25)
+
+      if (job.status === "done") {
+        clearInterval(interval)
+        router.push(`/results?job=${jobId}`)
+      }
+    }, 5000) // poll every 5 seconds
+
+    return () => clearInterval(interval)
+  }, [jobId, router])
+
 
   return (
     <main className="min-h-dvh">
