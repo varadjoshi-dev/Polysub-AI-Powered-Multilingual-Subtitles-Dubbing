@@ -32,15 +32,46 @@ export function FileUploader({
       e.preventDefault()
       setDragOver(false)
       const file = e.dataTransfer.files?.[0]
-      if (file) onChange(validate(file))
+      if (file) {
+          const validated = validate(file)
+                onChange(validated)
+                if (!validated.error) uploadToBackend(validated.file)  // ✅ Send to backend
+      }
     },
     [onChange],
   )
 
   const onInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (file) onChange(validate(file))
+    if (file) {
+              const validated = validate(file)
+                    onChange(validated)
+                    if (!validated.error) uploadToBackend(validated.file)  // ✅ Send to backend
+    }
   }
+
+const uploadToBackend = async (file: File) => {
+  const formData = new FormData()
+  formData.append("file", file)
+
+  try {
+    const response = await fetch("http://localhost:5000/api/upload", {
+      method: "POST",
+      body: formData,
+    })
+
+    if (!response.ok) {
+      throw new Error("Upload failed")
+    }
+
+    const data = await response.json()
+    console.log("✅ File uploaded:", data)
+    sessionStorage.setItem("uploadedFiles", JSON.stringify(data))
+    return data
+  } catch (error) {
+    console.error("❌ Upload error:", error)
+  }
+}
 
   return (
     <div>
