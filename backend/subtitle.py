@@ -27,6 +27,7 @@ import regex
 import shutil
 from pydub import silence
 import unicodedata
+from jobs import jobs
 
 
 def _normalize_token_for_compare(tok: str) -> str:
@@ -1881,9 +1882,9 @@ def main():
             print(f"  TTS Audio:    {t['tts_audio']}")
             print(f"  Dubbed Video: {t['dubbed_video']}")
 
-def process(input_path, **kwargs):
+def process(input_path, job_id, **kwargs):
 
-    job_id = kwargs.get("job_id")
+#     job_id = kwargs.get("job_id")
     enableTts = kwargs.get("enableTts", False)
     enableRealtime = kwargs.get("enableRealtime", False)
     generateSrt = kwargs.get("generateSrt", True)

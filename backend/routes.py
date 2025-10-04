@@ -7,6 +7,7 @@ import threading
 import time
 from jobs import jobs
 from subtitle import process
+from jobs import jobs
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for the frontend to interact with the backend
@@ -75,9 +76,8 @@ def start_process():
     # Run the pipeline in background
     threading.Thread(
               target=process,
-              args=(file_path,),  # positional args: input_path
+              args=(file_path,job_id,),  # positional args: input_path
               kwargs={
-                  "job_id": job_id,
                   "enableTts": enableTts,
                   "enableRealtime": enableRealtime,
                   "generateSrt": generateSrt,

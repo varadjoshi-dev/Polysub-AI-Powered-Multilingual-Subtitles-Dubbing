@@ -1,18 +1,95 @@
-openai-whisper
-transformers
+# Requires Python 3.11
+# After installation, run:
+# python -m spacy download en_core_web_sm
+
+# Web Framework
+fastapi
+uvicorn
+
+# Audio, Transcription & Text-to-Speech (TTS)
+openai-whisper==20250625
+edge-tts==7.2.3
+pydub==0.25.1
+soundfile==0.13.1
+ttsmms==0.7
+librosa==0.11.0
+phonemizer==3.3.0
+torchvision==0.23.0
+soxr==1.0.0
+monotonic-align==1.0.0
+Unidecode==1.4.0
+scipy==1.16.2
+scikit-learn==1.7.2
+audioread==3.0.1
+
+# Subtitle Processing
+srt==3.5.3
+pysubs2==1.8.0
+ffmpeg-python
+
+# Natural Language Processing (NLP)
+spacy==3.8.7
+spacy-legacy==3.0.12
+spacy-loggers==1.0.5
+thinc==8.3.6
+blis==1.3.0
+cymem==2.0.11
+preshed==3.0.10
+wasabi==1.1.3
+srsly==2.5.1
+catalogue==2.0.10
+weasel==0.4.1
+typer==0.19.2
+langcodes==3.5.0
+language-data==1.3.0
+pydantic==2.11.9
+pydantic-core==2.33.2
+annotated-types==0.7.0
+rich==14.1.0
+markdown-it-py==4.0.0
+mdurl==0.1.2
+shellingham==1.5.4
+marisa-trie==1.3.1
+confection==0.1.5
+
+# Transformers & Core ML
 torch
-sentencepiece
-sacremoses
-ttsmms
+transformers==4.56.2
+sentencepiece==0.2.1
+sacremoses==0.1.1
+tiktoken==0.11.0
+tokenizers==0.22.1
+safetensors==0.6.2
+huggingface-hub==0.35.3
+numpy==2.3.3
+numba==0.62.1
+llvmlite==0.45.0
+
+-- General Utilities --
+tqdm
+filelock==3.19.1
+packaging==25.0
+pyyaml==6.0.3
+requests==2.32.5
+more-itertools==10.8.0
+networkx==3.5
+sympy==1.14.0
+jinja2==3.1.6
+mpmath==1.3.0
+colorama==0.4.6
+click==8.3.0
+joblib==1.5.2
+openai-whisper
 edge-tts
 pydub
-pysoundfile   
-ffmpeg-python 
-pysubs2
-srt
+tqdm
+transformers
+sentencepiece
+sacremoses
 tqdm
 inflect
 regex
-spacy
 numpy
-ffmpeg        
+ffmpeg
+flask
+flask-cors
