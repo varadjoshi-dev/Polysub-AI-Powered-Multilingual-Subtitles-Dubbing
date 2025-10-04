@@ -58,7 +58,11 @@ export default function UploadPage() {
              langs            // from state
          }
      try {
+<<<<<<< HEAD
+        const res = await fetch("http://localhost:8000/api/process", {
+=======
         const res = await fetch("http://localhost:5000/api/process", {
+>>>>>>> 91e491ad34ad58b255033d0221d066dd19acb66f
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),

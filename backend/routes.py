@@ -1,105 +1,117 @@
-from flask import Flask, request, jsonify, send_from_directory
-from flask_cors import CORS
 import os
 import uuid
-import tempfile
-import threading
-import time
-from jobs import jobs
-from subtitle import process
+from fastapi import FastAPI, File, UploadFile, BackgroundTasks, HTTPException
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.middleware.cors import CORSMiddleware
 
-app = Flask(__name__)
-CORS(app)  # Enable CORS for the frontend to interact with the backend
+# Import the process function and safe_filename utility from your subtitle module
+from subtitle import process, safe_filename
+
+# --- Global In-Memory Job Store ---
+# The jobs dictionary now lives here, in the main server file.
+jobs = {}
+
+# --- FastAPI App Initialization ---
+app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 UPLOAD_FOLDER = "uploads"
-PROCESSED_FOLDER = "processed"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-os.makedirs(PROCESSED_FOLDER, exist_ok=True)
 
-# jobs = {}  # { job_id: {"filename": str, "status": str, "output": str} }
-uploaded = {} # { filename: }
+@app.post("/api/upload")
+async def upload_file(file: UploadFile = File(...)):
+    if not file or not file.filename:
+        raise HTTPException(status_code=400, detail="No valid file part")
 
-@app.route("/api/upload", methods=["POST"])
-def upload_file():
-    if "file" not in request.files:
-        return jsonify({"error": "No file part"}), 400
-
-    file = request.files["file"]
-    if file.filename == "":
-        return jsonify({"error": "No selected file"}), 400
-
-    # Save file
-    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
     job_id = str(uuid.uuid4())
-    filepath = os.path.join(UPLOAD_FOLDER, file.filename)
-    file.save(filepath)
+    safe_original_filename = safe_filename(file.filename)
+    filename = f"{job_id}_{safe_original_filename}"
+    filepath = os.path.join(UPLOAD_FOLDER, filename)
 
-    # Get file size in bytes
+    with open(filepath, "wb") as buffer:
+        content = await file.read()
+        buffer.write(content)
+
     file_size = os.path.getsize(filepath)
-    print(f"File size: {file_size} bytes")
 
-    # Create a job
-    job_id = str(uuid.uuid4())
-
-  # initialize job in global dict
     jobs[job_id] = {
         "id": job_id,
         "size": file_size,
         "filename": file.filename,
-        "status": "queued",
+        "server_path": filepath,
+        "status": "uploaded",
         "progress": 0,
-        "logs": [],
+        "logs": ["File uploaded successfully."],
     }
 
-    return jsonify({
+    return JSONResponse(content={
         "filename": file.filename,
-        "size": os.path.getsize(filepath),
+        "size": file_size,
         "path": filepath,
         "id": job_id
     })
 
-@app.route("/api/process", methods=["POST"])
-def start_process():
-
-    payload = request.get_json()
-    if not payload:
-       return jsonify({"error": "No JSON payload received"}), 400
-
-    file_path = payload.get("filePath")
+@app.post("/api/process")
+async def start_process(payload: dict, background_tasks: BackgroundTasks):
     job_id = payload.get("jobId")
-    enableTts = payload.get("enableTts")
-    enableRealtime = payload.get("enableRealtime", False)
-    generateSrt = payload.get("generateSrt", True)
-    langs = payload.get("langs", [])
+    file_path = payload.get("filePath")
+    langs = payload.get("langs", ["hin_Deva"])
+    enable_tts = payload.get("enableTts", False)
 
-    # Run the pipeline in background
-    threading.Thread(
-              target=process,
-              args=(file_path,),  # positional args: input_path
-              kwargs={
-                  "job_id": job_id,
-                  "enableTts": enableTts,
-                  "enableRealtime": enableRealtime,
-                  "generateSrt": generateSrt,
-                  "target_lang": langs
-              },
-              daemon=True
-          ).start()
+    if not job_id or not file_path:
+        raise HTTPException(status_code=400, detail="Missing jobId or filePath")
 
-    jobs[job_id].update({"opts": { "generateSrt": generateSrt, "enableTts": enableTts, "enableRealtime": enableRealtime },
-                    "langs": langs })
+    if job_id not in jobs:
+        raise HTTPException(status_code=404, detail="Job not found")
 
-    return jobs[job_id]
+    jobs[job_id]["status"] = "queued"
+    jobs[job_id]["logs"].append("Job queued for processing.")
+    jobs[job_id]["opts"] = {"enableTts": enable_tts, "langs": langs}
+
+    # *** FIX: Pass the 'jobs' dictionary to the process function ***
+    background_tasks.add_task(
+        process,
+        jobs=jobs, # Pass the jobs dictionary
+        input_path=file_path,
+        job_id=job_id,
+        enableTts=enable_tts,
+        target_lang=",".join(langs)
+    )
+
+    return JSONResponse(content=jobs[job_id])
 
 
-# --- Check job status ---
-@app.route("/api/status/<job_id>", methods=["GET"])
-def job_status(job_id):
+@app.get("/api/status/{job_id}")
+def job_status(job_id: str):
     job = jobs.get(job_id)
     if not job:
-        return jsonify({"error": "Job not found"}), 404
-    return jsonify(job)
+        raise HTTPException(status_code=404, detail="Job not found")
 
+    if job.get("status") == "done" and not job.get("output_files"):
+        server_path = job.get("server_path", "")
+        base_name = os.path.splitext(os.path.basename(server_path))[0]
+        
+        output_files = [
+            f for f in os.listdir('.')
+            if f.startswith(base_name) and (f.endswith('.mp4') or f.endswith('.srt'))
+        ]
+        job["output_files"] = output_files
 
-if __name__ == "__main__":
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    return JSONResponse(content=job)
+
+@app.get("/api/download/{filename}")
+def download_file(filename: str):
+    if not os.path.exists(filename):
+        raise HTTPException(status_code=404, detail="File not found")
+        
+    return FileResponse(path=filename, media_type='application/octet-stream', filename=filename)
+
+# To run: uvicorn routes:app --reload
+

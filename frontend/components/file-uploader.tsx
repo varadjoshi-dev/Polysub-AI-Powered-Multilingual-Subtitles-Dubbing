@@ -34,8 +34,13 @@ export function FileUploader({
       const file = e.dataTransfer.files?.[0]
       if (file) {
           const validated = validate(file)
+<<<<<<< HEAD
+              onChange(validated)
+              if (!validated.error) uploadToBackend(validated.file)  // ✅ Send to backend
+=======
                 onChange(validated)
                 if (!validated.error) uploadToBackend(validated.file)  // ✅ Send to backend
+>>>>>>> 91e491ad34ad58b255033d0221d066dd19acb66f
       }
     },
     [onChange],
@@ -45,8 +50,13 @@ export function FileUploader({
     const file = e.target.files?.[0]
     if (file) {
               const validated = validate(file)
+<<<<<<< HEAD
+                  onChange(validated)
+                  if (!validated.error) uploadToBackend(validated.file)  // ✅ Send to backend
+=======
                     onChange(validated)
                     if (!validated.error) uploadToBackend(validated.file)  // ✅ Send to backend
+>>>>>>> 91e491ad34ad58b255033d0221d066dd19acb66f
     }
   }
 
@@ -55,7 +65,12 @@ const uploadToBackend = async (file: File) => {
   formData.append("file", file)
 
   try {
+<<<<<<< HEAD
+    // *** FIX: Changed the port from 5000 to 8000 to match the running backend ***
+    const response = await fetch("http://localhost:8000/api/upload", {
+=======
     const response = await fetch("http://localhost:5000/api/upload", {
+>>>>>>> 91e491ad34ad58b255033d0221d066dd19acb66f
       method: "POST",
       body: formData,
     })
@@ -124,3 +139,4 @@ const uploadToBackend = async (file: File) => {
     </div>
   )
 }
+

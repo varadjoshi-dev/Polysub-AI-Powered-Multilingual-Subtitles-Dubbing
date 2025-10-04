@@ -25,7 +25,13 @@ import io
 from pydub.utils import make_chunks
 import regex
 import shutil
+<<<<<<< HEAD
+# *** FIX: Removed 'from jobs import jobs' as it's no longer needed ***
+
+# This file contains the core logic for video transcription, translation, and processing.
+=======
 from jobs import jobs
+>>>>>>> 91e491ad34ad58b255033d0221d066dd19acb66f
 
 def split_caption_text_two_lines(text, max_chars=40):
     """
@@ -47,12 +53,18 @@ def split_caption_text_two_lines(text, max_chars=40):
     if cur:
         lines.append(cur)
 
+<<<<<<< HEAD
+    if len(lines) <= 2:
+        return [ln.strip() for ln in lines]
+
+=======
     # If already 1 or 2 lines -> good
     if len(lines) <= 2:
         return [ln.strip() for ln in lines]
 
     # More than 2 lines: merge into 2 lines trying to balance by char-count
     # Strategy: greedily pack words into first line until roughly half of total chars
+>>>>>>> 91e491ad34ad58b255033d0221d066dd19acb66f
     total_chars = sum(len(w) for w in words) + (len(words) - 1)
     target = total_chars // 2
     l1_words = []
@@ -73,6 +85,8 @@ def split_caption_text_two_lines(text, max_chars=40):
         return [l1]
     return [l1, l2]
 
+<<<<<<< HEAD
+=======
 
 def split_long_subtitles(input_srt, output_srt, max_chars=40):
     """
@@ -721,6 +735,7 @@ def get_tts_model(tgt_lang_nllb):
         tts_models[tgt_lang_nllb] = TTS(model_dir)
     return tts_models[tgt_lang_nllb]
 
+>>>>>>> 91e491ad34ad58b255033d0221d066dd19acb66f
 def split_caption_text(text, max_chars=60):
     """Split caption text intelligently without splitting words."""
     if len(text) <= max_chars:
@@ -738,6 +753,361 @@ def split_caption_text(text, max_chars=60):
         chunks.append(current_chunk.strip())
     return chunks
 
+<<<<<<< HEAD
+def split_long_subtitles(input_srt, output_srt, max_chars=40):
+    subs = pysubs2.load(input_srt, encoding="utf-8")
+    new_subs = []
+    for ev in subs:
+        text = ev.text.strip()
+        if not text:
+            new_subs.append(ev)
+            continue
+        if len(text) <= max_chars:
+            wrapped = split_caption_text_two_lines(text, max_chars=max_chars)
+            ev.text = "\n".join(wrapped)
+            new_subs.append(ev)
+            continue
+        chunks = split_caption_text(text, max_chars=max_chars)
+        total_duration = ev.end - ev.start
+        num_chunks = len(chunks) if chunks else 1
+        base_chunk = total_duration // num_chunks
+        remainder = total_duration - (base_chunk * num_chunks)
+        offset = ev.start
+        for i, chunk in enumerate(chunks):
+            this_dur = base_chunk + (1 if i < remainder else 0)
+            wrapped = split_caption_text_two_lines(chunk, max_chars=max_chars)
+            new_ev = pysubs2.SSAEvent(
+                start=offset,
+                end=offset + this_dur,
+                text="\n".join(wrapped)
+            )
+            new_subs.append(new_ev)
+            offset += this_dur
+    ssa = pysubs2.SSAFile()
+    ssa.events = new_subs
+    ssa.save(output_srt, format_="srt", encoding="utf-8")
+    print(f"[FIXED] Long subtitles split → {output_srt}")
+
+def _normalize_short_token(tok: str) -> str:
+    if not tok:
+        return ""
+    core = regex.sub(r'^\p{P}+|\p{P}+$', '', tok)
+    return core.casefold()
+
+def dedupe_nearby_words(words, time_tol_s=0.05):
+    if not words:
+        return []
+    words_sorted = sorted(words, key=lambda w: (w['start'], w['end']))
+    out = [words_sorted[0]]
+    for w in words_sorted[1:]:
+        prev = out[-1]
+        if abs(w['start'] - prev['start']) <= time_tol_s and _normalize_short_token(w['word']) == _normalize_short_token(prev['word']):
+            if w['end'] > prev['end']:
+                out[-1] = w
+            continue
+        if w['start'] >= prev['start'] and w['end'] <= prev['end'] and _normalize_short_token(w['word']) == _normalize_short_token(prev['word']):
+            continue
+        out.append(w)
+    return out
+    
+def adaptive_min_display(text, base_per_char=50, min_ms=800, max_ms=3000):
+    est = len(text) * base_per_char
+    return max(min_ms, min(est, max_ms))
+
+def words_to_srt(words, max_chars=42, max_duration=5000):
+    if not words:
+        return ""
+    words_sorted = sorted(words, key=lambda w: w['start'])
+    words_sorted = dedupe_nearby_words(words_sorted, time_tol_s=0.05)
+    subs = []
+    cur_words = []
+    cur_start = None
+    index = 1
+    prev_end_s = 0.0
+    for w in words_sorted:
+        tok = w['word'].strip()
+        if not tok:
+            continue
+        if not cur_words:
+            cur_start = w['start']
+            cur_words = [w]
+        else:
+            cur_words.append(w)
+        text = " ".join(x['word'].strip() for x in cur_words).strip()
+        cur_end = cur_words[-1]['end']
+        duration_ms = (cur_end - cur_start) * 1000
+        if len(text) > max_chars or duration_ms > max_duration:
+            if len(cur_words) == 1:
+                emit_start = max(cur_start, prev_end_s + 0.001)
+                emit_end = max(cur_end, emit_start + adaptive_min_display(tok) / 1000.0)
+                content = "\n".join(split_caption_text_two_lines(tok, max_chars))
+                subs.append(srt.Subtitle(
+                    index=index,
+                    start=datetime.timedelta(seconds=emit_start),
+                    end=datetime.timedelta(seconds=emit_end),
+                    content=content
+                ))
+                index += 1
+                prev_end_s = emit_end
+                cur_words = []
+                cur_start = None
+                continue
+            to_emit = cur_words[:-1]
+            emit_text = " ".join(x['word'].strip() for x in to_emit).strip()
+            emit_start = max(cur_start, prev_end_s + 0.001)
+            emit_end = to_emit[-1]['end']
+            min_disp_ms = adaptive_min_display(emit_text)
+            if (emit_end - emit_start) * 1000 < min_disp_ms:
+                emit_end = emit_start + (min_disp_ms / 1000.0)
+            content = "\n".join(split_caption_text_two_lines(emit_text, max_chars))
+            subs.append(srt.Subtitle(
+                index=index,
+                start=datetime.timedelta(seconds=emit_start),
+                end=datetime.timedelta(seconds=emit_end),
+                content=content
+            ))
+            index += 1
+            prev_end_s = emit_end
+            last_w = cur_words[-1]
+            cur_words = [last_w]
+            cur_start = last_w['start']
+    if cur_words:
+        emit_text = " ".join(x['word'].strip() for x in cur_words).strip()
+        emit_start = max(cur_start, prev_end_s + 0.001)
+        emit_end = cur_words[-1]['end']
+        min_disp_ms = adaptive_min_display(emit_text)
+        if (emit_end - emit_start) * 1000 < min_disp_ms:
+            emit_end = emit_start + (min_disp_ms / 1000.0)
+        content = "\n".join(split_caption_text_two_lines(emit_text, max_chars))
+        subs.append(srt.Subtitle(
+            index=index,
+            start=datetime.timedelta(seconds=emit_start),
+            end=datetime.timedelta(seconds=emit_end),
+            content=content
+        ))
+    for i in range(1, len(subs)):
+        if subs[i].start <= subs[i-1].start:
+            subs[i].start = subs[i-1].end + datetime.timedelta(milliseconds=10)
+        if subs[i].start >= subs[i].end:
+            subs[i].end = subs[i].start + datetime.timedelta(milliseconds=50)
+    return srt.compose(subs)
+
+def safe_filename(name: str) -> str:
+    return re.sub(r'[^a-zA-Z0-9_\-\.]', '_', name)
+
+def ensure_pkg(mod_name, pip_name=None):
+    try:
+        __import__(mod_name)
+    except ImportError:
+        subprocess.check_call([sys.executable, "-m", "pip", "install", pip_name or mod_name])
+
+for pkg in ["transformers","sentencepiece","sacremoses","ttsmms","pydub","pysubs2","pysoundfile","inflect"]:
+    ensure_pkg(pkg)
+
+BRAND_TRANSLITERATIONS = {
+    "hin_Deva": {"Apple": "एप्पल", "Google": "गूगल", "Facebook": "फेसबुक", "Microsoft": "माइक्रोसॉफ्ट", "Amazon": "अमेज़न"},
+    "mar_Deva": {"Apple": "एप्पल", "Google": "गूगल", "Facebook": "फेसबुक", "Microsoft": "मायक्रोसॉफ्ट", "Amazon": "अ\u095f\u0947\u092e\u093d\u094d\u091d\u094b\u0902"}
+}
+p = inflect.engine()
+
+def extract_audio_if_video(input_path, tmp_dir):
+    video_exts = {'.mp4', '.mkv', '.mov', '.avi', '.webm', '.flv', '.wmv'}
+    _, ext = os.path.splitext(input_path.lower())
+    if ext in video_exts:
+        out_audio = os.path.join(tmp_dir, f"{uuid.uuid4().hex}.wav")
+        cmd = ["ffmpeg","-y","-i",input_path,"-ac","1","-ar","16000","-vn",out_audio]
+        print("Extracting audio with ffmpeg...")
+        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return out_audio
+    return input_path
+
+def split_audio(audio_path, chunk_length_ms=30 * 1000, overlap_ms=500):
+    audio = AudioSegment.from_file(audio_path)
+    total_ms = len(audio)
+    chunk_paths = []
+    start = 0
+    while start < total_ms:
+        end = min(start + chunk_length_ms, total_ms)
+        chunk = audio[start:end]
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+            chunk.export(tmp.name, format="wav")
+            chunk_paths.append((tmp.name, start))
+        if end == total_ms:
+            break
+        start = end - overlap_ms if (end - overlap_ms) > start else end
+    return chunk_paths
+
+def segments_to_srt(segments):
+    subs = []
+    for i, seg in enumerate(segments, start=1):
+        start_td = datetime.timedelta(seconds=float(seg['start']))
+        end_td = datetime.timedelta(seconds=float(seg['end']))
+        subs.append(srt.Subtitle(index=i,start=start_td,end=end_td,content=seg['text'].strip()))
+    return srt.compose(subs)
+
+LANG_FONTS = {
+    "_Deva": "Noto Sans Devanagari", "_Beng": "Noto Sans Bengali", "_Gujr": "Noto Sans Gujarati",
+    "_Guru": "Noto Sans Gurmukhi", "_Taml": "Noto Sans Tamil", "_Telu": "Noto Sans Telugu",
+    "_Knda": "Noto Sans Kannada", "_Mlym": "Noto Sans Malayalam", "_Orya": "Noto Sans Oriya",
+    "_Sinh": "Noto Sans Sinhala", "_Olck": "Noto Sans Ol Chiki", "_Laoo": "Noto Sans Lao",
+    "_Hans": "Noto Sans SC", "_Hant": "Noto Sans TC", "_Jpan": "Noto Sans JP",
+    "_Hang": "Noto Sans KR", "_Tibt": "Noto Sans Tibetan", "_Mymr": "Noto Sans Myanmar",
+    "_Khmr": "Noto Sans Khmer", "_Thai": "Noto Sans Thai", "_Arab": "Noto Naskh Arabic",
+    "_Hebr": "Noto Sans Hebrew", "_Syrc": "Noto Sans Syriac", "_Tfng": "Noto Sans Tifinagh",
+    "_Cyrl": "Noto Sans", "_Glag": "Noto Sans Glagolitic", "_Latn": "Noto Sans",
+    "_Grek": "Noto Sans Greek", "_Armn": "Noto Sans Armenian", "_Geor": "Noto Sans Georgian",
+    "_Ethi": "Noto Sans Ethiopic", "_Cher": "Noto Sans Cherokee", "_Vaii": "Noto Sans Vai",
+    "_Tale": "Noto Sans Tai Le", "_Talu": "Noto Sans New Tai Lue", "_Phag": "Noto Sans Phags Pa",
+    "default": "Noto Sans"
+}
+
+def get_font_for_lang(tgt_lang_nllb: str) -> str:
+    for suffix, font in LANG_FONTS.items():
+        if tgt_lang_nllb.endswith(suffix):
+            return font
+    return LANG_FONTS["default"]
+
+def convert_srt_to_ass(srt_file, ass_file, tgt_lang_nllb):
+    try:
+        subs = pysubs2.load(srt_file, encoding="utf-8")
+    except Exception:
+        with open(srt_file, "rb") as f:
+            content = f.read().decode('utf-8', errors='ignore')
+        subs = pysubs2.SSAFile.from_string(content)
+        
+    font = get_font_for_lang(tgt_lang_nllb)
+    if "Default" not in subs.styles:
+        subs.styles["Default"] = pysubs2.SSAStyle()
+    subs.styles["Default"].fontname = font
+    subs.styles["Default"].fontsize = 26
+    subs.styles["Default"].alignment = pysubs2.Alignment.BOTTOM_CENTER
+    subs.styles["Default"].marginv = 50
+    subs.styles["Default"].marginl = 40
+    subs.styles["Default"].marginr = 40
+    subs.save(ass_file, format_="ass")
+    print(f"SRT converted to ASS with font '{font}' → {ass_file}")
+
+def speedup_audio_to_fit_segment(audio: AudioSegment, target_duration_ms: int, max_step=1.5) -> AudioSegment:
+    current_duration = len(audio)
+    if current_duration <= target_duration_ms:
+        return audio + AudioSegment.silent(duration=(target_duration_ms - current_duration))
+    speed_factor = current_duration / target_duration_ms
+    if speed_factor <= 1.0:
+        return audio
+    step = 1.05
+    while speed_factor > step and step < max_step:
+        audio = audio._spawn(audio.raw_data, overrides={"frame_rate": int(audio.frame_rate * step)})
+        audio = audio.set_frame_rate(audio.frame_rate)
+        speed_factor /= step
+    audio = audio._spawn(audio.raw_data, overrides={"frame_rate": int(audio.frame_rate * speed_factor)})
+    return audio.set_frame_rate(audio.frame_rate)
+
+def _preprocess_audio_for_whisper(src_path, target_sr=16000):
+    audio = AudioSegment.from_file(src_path)
+    audio = audio.set_frame_rate(target_sr).set_channels(1)
+    audio = effects.normalize(audio)
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+        audio.export(tmp.name, format="wav")
+        return tmp.name
+
+def _merge_and_dedupe_segments(segments, min_gap_s=0.05):
+    if not segments:
+        return []
+    segments_sorted = sorted(segments, key=lambda s: s['start'])
+    merged = [dict(segments_sorted[0])]
+    for s in segments_sorted[1:]:
+        cur = merged[-1]
+        if s['start'] <= cur['end'] + min_gap_s:
+            cur['end'] = max(cur['end'], s['end'])
+            if not cur['text'].strip().endswith(s['text'].strip()):
+                cur['text'] = (cur['text'].strip() + " " + s['text'].strip()).strip()
+        else:
+            merged.append(dict(s))
+    return merged
+
+ISO2_TO_NLLB = {
+    "hi": "hin_Deva", "mr": "mar_Deva", "bn": "ben_Beng", "gu": "guj_Gujr", "pa": "pan_Guru",
+    "ta": "tam_Taml", "te": "tel_Telu", "kn": "kan_Knda", "ml": "mal_Mlym", "or": "ory_Orya",
+    "en": "eng_Latn", "fr": "fra_Latn", "de": "deu_Latn", "es": "spa_Latn", "pt": "por_Latn",
+    "ru": "rus_Cyrl", "ar": "arb_Arab", "ja": "jpn_Jpan", "ko": "kor_Hang", "zh": "zho_Hans",
+}
+
+def to_nllb_code(code: str) -> str:
+    if "_" in code and len(code.split("_")[0])==3:
+        return code
+    return ISO2_TO_NLLB.get(code.lower(), "eng_Latn")
+
+NLLB_TO_MMS_OVERRIDES={"zho":"cmn"}
+def nllb_to_mms(nllb_code: str) -> str:
+    return NLLB_TO_MMS_OVERRIDES.get(nllb_code.split("_")[0], nllb_code.split("_")[0])
+
+def universal_normalize_text(text: str, lang_hint="eng") -> str:
+    if not text:
+        return text
+    if not lang_hint.startswith("eng"):
+        return re.sub(r"\s+", " ", text).strip()
+    return re.sub(r"\s+", " ", text).strip()
+
+print("Loading NLLB model for translation...")
+NLLB_MODEL_NAME="facebook/nllb-200-distilled-600M"
+tokenizer=AutoTokenizer.from_pretrained(NLLB_MODEL_NAME)
+nllb_model=AutoModelForSeq2SeqLM.from_pretrained(NLLB_MODEL_NAME)
+
+def enforce_full_translation(text: str, src_lang: str, tgt_lang: str, translator) -> str:
+    if not text.strip():
+        return text
+    return text
+
+def translate_segments_nllb(segments, src_lang_nllb, tgt_lang_nllb):
+    translator = pipeline("translation", model=nllb_model, tokenizer=tokenizer, src_lang=src_lang_nllb, tgt_lang=tgt_lang_nllb, max_length=2048)
+    translated_segments = []
+    print(f"Translating {len(segments)} segments {src_lang_nllb} → {tgt_lang_nllb}...")
+    for seg in tqdm(segments):
+        txt = seg['text'].strip()
+        if not txt:
+            translated_segments.append({'start': seg['start'], 'end': seg['end'], 'text': ""})
+            continue
+        translated_text = translator(txt)[0]['translation_text']
+        translated_segments.append({'start': seg['start'], 'end': seg['end'], 'text': translated_text})
+    return translated_segments
+
+def apply_brand_map(text: str, tgt_lang_nllb: str) -> str:
+    brand_map = BRAND_TRANSLITERATIONS.get(tgt_lang_nllb, {})
+    for eng_word, local_word in brand_map.items():
+        text = re.sub(rf"\b{eng_word}\b", local_word, text)
+    return text
+
+def dedupe_translations(text: str, tgt_lang_nllb: str = "eng_Latn") -> str:
+    if not text:
+        return text
+    text = apply_brand_map(text, tgt_lang_nllb)
+    tokens = text.split()
+    cleaned = []
+    i = 0
+    while i < len(tokens):
+        tok = tokens[i]
+        if i + 1 < len(tokens) and tokens[i + 1].lower() == tok.lower():
+            if i + 2 < len(tokens) and tokens[i + 2].lower() == tok.lower():
+                cleaned.append(tok)
+                i += 3
+                continue
+        cleaned.append(tok)
+        i += 1
+    return " ".join(cleaned)
+
+tts_models = {}
+def get_tts_model(tgt_lang_nllb):
+    mms_code = nllb_to_mms(tgt_lang_nllb)
+    model_dir = os.path.join("models", mms_code)
+    if tgt_lang_nllb not in tts_models:
+        if not os.path.exists(model_dir):
+            print(f"Downloading MMS TTS model for {tgt_lang_nllb} → {mms_code} ...")
+            download(mms_code, "./models")
+        tts_models[tgt_lang_nllb] = TTS(model_dir)
+    return tts_models[tgt_lang_nllb]
+
+def tts_from_srt_global_fit_refined(srt_file, tgt_lang_nllb, video_path, output_audio, **kwargs):
+=======
 def refine_subtitles_for_tts(subs, max_chars=60):
     """
     Split long subtitle events but preserve exact total timing.
@@ -841,11 +1211,28 @@ def tts_from_srt_global_fit_refined(
     fade_ms=80
 ):
     """ Generate a continuous refined TTS track (ignores per-sub timing). Adds padding, fading, normalization, then stretches to fit video duration. """
+>>>>>>> 91e491ad34ad58b255033d0221d066dd19acb66f
     subs = pysubs2.load(srt_file, encoding="utf-8")
     full_text = " ".join([sub.text.strip() for sub in subs if sub.text.strip()])
     if not full_text:
         raise ValueError("No subtitle text to speak.")
     tts_model = get_tts_model(tgt_lang_nllb)
+<<<<<<< HEAD
+    if tgt_lang_nllb.startswith("eng"):
+        full_text = universal_normalize_text(full_text)
+    full_text = apply_brand_map(full_text, tgt_lang_nllb)
+    wav_out = tts_model.synthesis(full_text)
+    y, sr = wav_out["x"], int(wav_out["sampling_rate"])
+    if y.ndim > 1: y = y.mean(axis=1)
+    y = y / max(1.0, np.max(np.abs(y))) * 0.9
+    tensor_int16 = (y * 32767).astype(np.int16)
+    tts_audio = AudioSegment(tensor_int16.tobytes(), frame_rate=sr, sample_width=2, channels=1)
+    tts_audio = AudioSegment.silent(200) + tts_audio + AudioSegment.silent(300)
+    tts_audio = effects.normalize(tts_audio, headroom=3.0)
+    probe = ffmpeg.probe(video_path)
+    video_duration = float(probe['format']['duration']) * 1000
+    tts_audio = speedup_audio_to_fit_segment(tts_audio, int(video_duration))
+=======
     # 🔹 Apply text normalization for English
     if tgt_lang_nllb.startswith("eng"):
         full_text = universal_normalize_text(full_text)
@@ -878,10 +1265,57 @@ def tts_from_srt_global_fit_refined(
     video_duration = float(probe['format']['duration']) * 1000
     tts_audio = speedup_audio_to_fit_segment(tts_audio, int(video_duration))
     # Export
+>>>>>>> 91e491ad34ad58b255033d0221d066dd19acb66f
     tts_audio.export(output_audio, format="mp3")
     print(f"Refined global-fit TTS file created: {output_audio}")
     return output_audio
 
+<<<<<<< HEAD
+def transcribe_in_chunks(audio_path, model_size='large', language=None, chunk_length_ms=60*1000, overlap_ms=1000):
+    audio_path = _preprocess_audio_for_whisper(audio_path)
+    chunk_info = split_audio(audio_path, chunk_length_ms, overlap_ms=overlap_ms)
+    print(f"Loading Whisper model: {model_size}")
+    model = whisper.load_model(model_size)
+    segments, words_global, detected_lang = [], [], None
+    for chunk_path, chunk_start_ms in tqdm(chunk_info, desc="Transcribing chunks"):
+        result = model.transcribe(chunk_path, task="transcribe", word_timestamps=True, language=language)
+        detected_lang = result.get("language", detected_lang)
+        chunk_offset = chunk_start_ms / 1000.0
+        for seg in result.get("segments", []):
+            seg_start = float(seg['start']) + chunk_offset
+            seg_end = float(seg['end']) + chunk_offset
+            words = [{"word": w["word"].strip(), "start": float(w["start"]) + chunk_offset, "end": float(w["end"]) + chunk_offset} for w in seg.get("words", [])]
+            new_seg = {"start": seg_start, "end": seg_end, "text": seg["text"].strip(), "words": words}
+            segments.append(new_seg)
+            words_global.extend(words)
+    segments = _merge_and_dedupe_segments(segments)
+    words_global = sorted(words_global, key=lambda w: (w['start'], w['end']))
+    words_global = dedupe_nearby_words(words_global, time_tol_s=0.05)
+    return segments, detected_lang, words_global
+
+def refine_srt(input_srt, output_srt, max_line_length=42, lang_hint="eng"):
+    subs = pysubs2.load(input_srt, encoding="utf-8")
+    refined = []
+    for i, ev in enumerate(subs):
+        text = ev.text.strip()
+        if lang_hint.startswith("eng"):
+            text = re.sub(r"\b(uh|um|ah|er|hmm)\b", "", text, flags=re.IGNORECASE)
+            text = universal_normalize_text(text, lang_hint=lang_hint)
+        text = re.sub(r"\s+", " ", text).strip()
+        if lang_hint.startswith("eng") and text:
+            if not text.endswith((".", "?", "!")): text += "."
+            text = text[0].upper() + text[1:]
+        start, end = ev.start, ev.end
+        if i > 0 and start < refined[-1].end: start = refined[-1].end + 10
+        min_disp = adaptive_min_display(text)
+        if end - start < min_disp: end = start + min_disp
+        ev.text = "\n".join(split_caption_text_two_lines(text, max_chars=max_line_length))
+        ev.start, ev.end = start, end
+        refined.append(ev)
+    for i in range(1, len(refined)):
+        if refined[i].start < refined[i-1].end:
+            refined[i].start = refined[i-1].end + 10
+=======
 # ----------------------------- Whisper -----------------------------
 def transcribe_in_chunks(
     audio_path,
@@ -1051,12 +1485,24 @@ def refine_srt(input_srt, output_srt, max_line_length=42, min_display_time=800, 
         if refined[i].start < refined[i-1].end:
             refined[i].start = refined[i-1].end + 10
 
+>>>>>>> 91e491ad34ad58b255033d0221d066dd19acb66f
     ssa_file = pysubs2.SSAFile()
     ssa_file.events = refined
     ssa_file.save(output_srt, encoding="utf-8", format_="srt")
     print(f"[SAFE] Refined subtitles saved → {output_srt}")
 
 def _normalize_token_for_compare(tok: str) -> str:
+<<<<<<< HEAD
+    return regex.sub(r'^\p{P}+|\p{P}+$', '', tok).casefold()
+
+def collapse_repeated_runs_in_text(text: str) -> str:
+    if not text: return text
+    toks = text.split()
+    out, prev_norm = [], None
+    for t in toks:
+        norm = _normalize_token_for_compare(t)
+        if norm == prev_norm: continue
+=======
     """Return a normalized token for equality checks (strip punctuation, casefold)."""
     # remove leading/trailing punctuation (unicode-aware) and casefold
     core = regex.sub(r'^\p{P}+|\p{P}+$', '', tok)
@@ -1078,11 +1524,30 @@ def collapse_repeated_runs_in_text(text: str) -> str:
         if norm == prev_norm:
             # skip repeated token
             continue
+>>>>>>> 91e491ad34ad58b255033d0221d066dd19acb66f
         out.append(t)
         prev_norm = norm
     return " ".join(out)
 
 def _remove_boundary_duplicates(segments):
+<<<<<<< HEAD
+    if not segments: return segments
+    segments_sorted = sorted(segments, key=lambda s: s['start'])
+    for i in range(len(segments_sorted) - 1):
+        a_tokens, b_tokens = segments_sorted[i]['text'].split(), segments_sorted[i+1]['text'].split()
+        if not a_tokens or not b_tokens: continue
+        max_k = min(3, len(a_tokens), len(b_tokens))
+        for k in range(max_k, 0, -1):
+            if [_normalize_token_for_compare(x) for x in a_tokens[-k:]] == [_normalize_token_for_compare(x) for x in b_tokens[:k]]:
+                segments_sorted[i+1]['text'] = " ".join(b_tokens[k:]).strip()
+                break
+    return segments_sorted
+
+def tidy_translated_segments(segments):
+    for seg in segments:
+        seg['text'] = collapse_repeated_runs_in_text(seg.get('text','')).strip()
+    segments = _remove_boundary_duplicates(segments)
+=======
     """
     For adjacent segments, if the last K tokens of seg[i] == first K tokens of seg[i+1]
     (K up to 3), remove that leading overlap from seg[i+1].
@@ -1175,10 +1640,93 @@ def tidy_translated_segments(segments):
     segments = _remove_boundary_duplicates(segments)
 
     # final cleanup: trim whitespace
+>>>>>>> 91e491ad34ad58b255033d0221d066dd19acb66f
     for seg in segments:
         seg['text'] = seg['text'].strip()
     return segments
 
+<<<<<<< HEAD
+# *** FIX: Updated function signature to accept 'jobs' dictionary ***
+def process(jobs, input_path, **kwargs):
+    job_id = kwargs.get("job_id")
+    enableTts = kwargs.get("enableTts", False)
+    target_lang = kwargs.get("target_lang", "hin_Deva")
+    model_size = kwargs.get("model", "small") # Default to small model
+    
+    def update(progress, status, message):
+        if job_id and job_id in jobs:
+            jobs[job_id]["progress"] = progress
+            jobs[job_id]["status"] = status
+            jobs[job_id]["logs"].append(message)
+            print(f"[{job_id}] {status} ({progress}%): {message}")
+
+    try:
+        if not os.path.isfile(input_path):
+            raise FileNotFoundError(f"Input not found: {input_path}")
+
+        base = os.path.splitext(os.path.basename(input_path))[0]
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            update(5, "processing", "Extracting audio from video...")
+            audio_path = extract_audio_if_video(input_path, tmpdir)
+
+            update(10, "processing", "Transcribing audio to text...")
+            segments, detected_lang_iso2, _ = transcribe_in_chunks(
+                audio_path, model_size=model_size
+            )
+            if not segments:
+                update(100, "failed", "Transcription failed: No text detected.")
+                return
+
+            src_lang_nllb = to_nllb_code(detected_lang_iso2 or "en")
+            update(30, "processing", f"Detected language: {src_lang_nllb}")
+
+            targets_raw = [x.strip() for x in target_lang.split(",")]
+            target_langs_nllb = [to_nllb_code(t) for t in targets_raw]
+
+            for i, tgt_lang_nllb in enumerate(target_langs_nllb):
+                lang_progress_start = 30 + (i * (70 / len(target_langs_nllb)))
+                
+                if tgt_lang_nllb == src_lang_nllb:
+                    update(lang_progress_start + 5, "processing", f"Skipping translation for {tgt_lang_nllb} (same as source).")
+                    continue
+
+                update(lang_progress_start + 10, "processing", f"Translating to {tgt_lang_nllb}...")
+                translated_segments = translate_segments_nllb(segments, src_lang_nllb, tgt_lang_nllb)
+                translated_segments = tidy_translated_segments(translated_segments)
+                
+                update(lang_progress_start + 25, "processing", "Generating subtitle file...")
+                out_srt_final = f"{base}_{tgt_lang_nllb}_final.srt"
+                with open(out_srt_final, "w", encoding="utf-8") as f:
+                    f.write(segments_to_srt(translated_segments))
+                refine_srt(out_srt_final, out_srt_final, lang_hint=tgt_lang_nllb)
+                
+                ass_file_final = out_srt_final.replace(".srt", ".ass")
+                convert_srt_to_ass(out_srt_final, ass_file_final, tgt_lang_nllb)
+                
+                update(lang_progress_start + 40, "processing", "Creating subtitled video...")
+                out_video_subs = f"{base}_{tgt_lang_nllb}_subs.mp4"
+                cmd_subs = ["ffmpeg", "-y", "-i", input_path, "-vf", f"ass={ass_file_final}", "-c:v", "libx264", "-preset", "fast", "-c:a", "copy", out_video_subs]
+                subprocess.run(cmd_subs, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                
+                # *** FIX: Check for enableTts before generating TTS video ***
+                if enableTts:
+                    update(lang_progress_start + 50, "processing", "Generating dubbed audio...")
+                    tts_audio_file = f"{base}_{tgt_lang_nllb}_tts.mp3"
+                    tts_from_srt_global_fit_refined(out_srt_final, tgt_lang_nllb, input_path, tts_audio_file)
+                    
+                    update(lang_progress_start + 60, "processing", "Creating dubbed video...")
+                    out_video_tts = f"{base}_{tgt_lang_nllb}_tts.mp4"
+                    cmd_tts = ["ffmpeg", "-y", "-i", input_path, "-i", tts_audio_file, "-map", "0:v:0", "-map", "1:a:0", "-vf", f"ass={ass_file_final}", "-c:v", "libx264", "-preset", "fast", "-c:a", "aac", "-b:a", "192k", "-shortest", out_video_tts]
+                    subprocess.run(cmd_tts, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+        update(100, "done", "Processing finished successfully!")
+
+    except Exception as e:
+        print(f"Error during processing: {e}")
+        update(100, "failed", f"An error occurred: {str(e)}")
+
+=======
 
 # ----------------------------- Burn-in -----------------------------
 def burn_subtitles_and_audio_to_video(original_video, subtitle_file, audio_file, output_video, tgt_lang_nllb="eng_Latn"):
@@ -1521,3 +2069,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+>>>>>>> 91e491ad34ad58b255033d0221d066dd19acb66f

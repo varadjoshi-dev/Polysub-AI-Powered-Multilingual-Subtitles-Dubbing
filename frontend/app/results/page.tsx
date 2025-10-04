@@ -16,7 +16,11 @@ export default function ResultsPage() {
 
   const pollJobStatus = async (jobId: string) => {
       try {
+<<<<<<< HEAD
+        const res = await fetch(`http://localhost:8000/api/status/${jobId}`)
+=======
         const res = await fetch(`http://localhost:5000/api/status/${jobId}`)
+>>>>>>> 91e491ad34ad58b255033d0221d066dd19acb66f
         if (!res.ok) throw new Error("Failed to fetch job status")
         const data = await res.json()
         return data
