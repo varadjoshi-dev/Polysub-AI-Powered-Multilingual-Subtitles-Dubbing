@@ -1,8 +1,8 @@
 "use client"
 
-import { useMemo } from "react"
+import { useMemo , useState} from "react"
 import { Button } from "@/components/ui/button"
-import { Download, Languages, FileText, AudioLines } from "lucide-react"
+import { Download, Languages, FileText, AudioLines, Loader2 } from "lucide-react"
 
 export type JobData = {
   id: string
@@ -10,6 +10,13 @@ export type JobData = {
   size: number
   langs: { code: string; name: string }[]
   opts: { generateSrt: boolean; enableTts: boolean; enableRealtime: boolean }
+  all_outputs?: {
+      lang: string;
+      srt: string;
+      subs_video: string;
+      tts_audio: string;
+      dubbed_video: string;
+    }[]
 }
 
 function createSrt(langCode: string) {
@@ -39,6 +46,55 @@ export function ResultsDownloads({ job }: { job: JobData }) {
   const hasSrt = job.opts.generateSrt
   const hasTts = job.opts.enableTts
   const hasRealtime = job.opts.enableRealtime
+
+  const [downloading, setDownloading] = useState<string | null>(null);
+
+
+   const langOutputs = useMemo(() => {
+       if (!job.all_outputs) return job.langs.map(l => ({ ...l, output: undefined }));
+
+       // Create a map: { NLLB_CODE: outputObject }
+       const outputMap = new Map(job.all_outputs.map(out => [out.lang, out]));
+
+       // Map the selected languages (job.langs) to include the output paths
+       return job.langs.map(l => ({
+         ...l,
+         // l.code (e.g., 'hin_Deva') is used by the backend as 'lang' for mapping
+         output: outputMap.get(l.code),
+       }));
+     }, [job.langs, job.all_outputs]);
+
+    /**
+     * Fetches the file from the Flask server and triggers the download.
+     * @param filePath The full path of the file on the server (e.g., processed/job_id/file.mp4)
+     * @param suggestedName The name to save the file as locally
+     * @param downloadKey A unique key (e.g., langCode-fileType) for managing the loading state
+     */
+    const handleDownload = async (filePath: string, suggestedName: string, downloadKey: string) => {
+      if (!filePath) return;
+
+      setDownloading(downloadKey);
+
+      try {
+        const url = `http://localhost:5000/api/download?path=${encodeURIComponent(filePath)}`;
+        const response = await fetch(url);
+
+        if (!response.ok) {
+          throw new Error(`Failed to download file: ${response.statusText}`);
+        }
+
+        const blob = await response.blob();
+
+        // Use the existing helper to force the browser to save the blob
+        downloadBlob(blob, suggestedName, blob.type);
+
+      } catch (error) {
+        console.error("Download error:", error);
+        alert("Failed to download the file. Check console for details.");
+      } finally {
+        setDownloading(null);
+      }
+    };
 
   const zipAll = async () => {
     // Placeholder "bundle" manifest; replace with JSZip when wiring backend
@@ -79,7 +135,13 @@ export function ResultsDownloads({ job }: { job: JobData }) {
             <h4 className="text-sm font-medium">Subtitle files (.srt)</h4>
           </div>
           <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
-            {job.langs.map((l) => (
+            {langOutputs.map((l) => {
+                const fileType = 'srt';
+                const downloadKey = `${l.code}-${fileType}`;
+                const filePath = l.output?.srt || '';
+                const suggestedName = `${job.filename.split('.')[0]}_${l.code}.${fileType}`;
+
+              return (
               <div key={l.code} className="flex items-center justify-between rounded-lg border bg-background px-3 py-2">
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium">{l.name}</p>
@@ -88,12 +150,19 @@ export function ResultsDownloads({ job }: { job: JobData }) {
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => downloadBlob(createSrt(l.code), `subtitles-${l.code}.srt`, "text/plain")}
+                  onClick={() => handleDownload(filePath, suggestedName, downloadKey)}
+                                              disabled={!l.output?.srt || downloading === downloadKey}
                 >
-                  <Download className="mr-2 h-3 w-3" /> Download
+                  {downloading === downloadKey ? (
+                    <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                  ) : (
+                    <Download className="mr-2 h-3 w-3" />
+                  )}
+                  Download
                 </Button>
               </div>
-            ))}
+              )
+            })}
           </div>
         </div>
       )}
@@ -105,7 +174,13 @@ export function ResultsDownloads({ job }: { job: JobData }) {
             <h4 className="text-sm font-medium">Dubbed video (TTS voices)</h4>
           </div>
           <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
-            {job.langs.map((l) => (
+            {langOutputs.map((l) => {
+              const fileType = 'mp4';
+              const downloadKey = `${l.code}-tts`;
+              const filePath = l.output?.dubbed_video || '';
+              const suggestedName = `${job.filename.split('.')[0]}_${l.code}_dubbed.${fileType}`;
+
+              return (
               <div key={l.code} className="flex items-center justify-between rounded-lg border bg-background px-3 py-2">
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium">{l.name}</p>
@@ -114,14 +189,19 @@ export function ResultsDownloads({ job }: { job: JobData }) {
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() =>
-                    downloadBlob("[placeholder] Dubbed MP4 not generated in demo", `dubbed-${l.code}.txt`, "text/plain")
-                  }
-                >
-                  <Download className="mr-2 h-3 w-3" /> Download
+                  onClick={() => handleDownload(filePath, suggestedName, downloadKey)}
+                                      disabled={!l.output?.dubbed_video || downloading === downloadKey}
+                  >
+                  {downloading === downloadKey ? (
+                    <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                  ) : (
+                    <Download className="mr-2 h-3 w-3" />
+                  )}
+                  Download
                 </Button>
               </div>
-            ))}
+            )
+          })}
           </div>
         </div>
       )}
@@ -133,7 +213,14 @@ export function ResultsDownloads({ job }: { job: JobData }) {
             <h4 className="text-sm font-medium">Embedded subtitles video</h4>
           </div>
           <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
-            {job.langs.map((l) => (
+            {langOutputs.map((l) => {
+
+              const fileType = 'mp4';
+              const downloadKey = `${l.code}-embedded`;
+              const filePath = l.output?.subs_video || '';
+              const suggestedName = `${job.filename.split('.')[0]}_${l.code}_embedded.${fileType}`;
+
+              return (
               <div key={l.code} className="flex items-center justify-between rounded-lg border bg-background px-3 py-2">
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium">{l.name}</p>
@@ -142,18 +229,19 @@ export function ResultsDownloads({ job }: { job: JobData }) {
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() =>
-                    downloadBlob(
-                      "[placeholder] Embedded (burned-in) MP4 not generated in demo",
-                      `embedded-${l.code}.txt`,
-                      "text/plain",
-                    )
-                  }
-                >
-                  <Download className="mr-2 h-3 w-3" /> Download
+                  onClick={() => handleDownload(filePath, suggestedName, downloadKey)}
+                                      disabled={!l.output?.subs_video || downloading === downloadKey}
+                  >
+                  {downloading === downloadKey ? (
+                    <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                  ) : (
+                    <Download className="mr-2 h-3 w-3" />
+                  )}
+                  Download
                 </Button>
               </div>
-            ))}
+            )
+          })}
           </div>
         </div>
       )}

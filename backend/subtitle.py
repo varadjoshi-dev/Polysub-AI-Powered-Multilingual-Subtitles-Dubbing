@@ -29,6 +29,7 @@ from pydub import silence
 import unicodedata
 from jobs import jobs
 
+PROCESSED_FOLDER = "processed"
 
 def _normalize_token_for_compare(tok: str) -> str:
     """Normalize token aggressively for duplicate detection."""
@@ -1908,6 +1909,8 @@ def process(input_path, job_id, **kwargs):
     if not os.path.isfile(input_path):
         raise FileNotFoundError(f"Input not found: {input_path}")
 
+    output_dir = os.path.join(PROCESSED_FOLDER, job_id)
+    os.makedirs(output_dir, exist_ok=True)
     base = safe_filename(os.path.splitext(os.path.basename(input_path))[0])
 
     update(10, "upload", "Running Whisper transcription...")
@@ -1929,7 +1932,7 @@ def process(input_path, job_id, **kwargs):
             silence_gap_s=0.6
         )
 
-        out_srt_original = f"{base}_{src_lang_nllb}_original.srt"
+        out_srt_original =  os.path.join(output_dir, f"{base}_{src_lang_nllb}_original.srt")
         with open(out_srt_original, "w", encoding="utf-8") as f:
             f.write(segments_to_srt(audio_driven_segments))
         print(f"[SAVE] Whisper SRT (AUDIO-DRIVEN) → {out_srt_original}")
@@ -1938,14 +1941,26 @@ def process(input_path, job_id, **kwargs):
 
         jobs[job_id]["progress"] = 25
         jobs[job_id]["status"] = "asr"
-        update(25, f"[SAVE] Whisper SRT (AUDIO-DRIVEN) → {out_srt_original}")
+        update(25, "asr", f"[SAVE] Whisper SRT (AUDIO-DRIVEN) → {out_srt_original}")
 
         # === Step 3: Process each target language ===
         for tgt_lang in target_langs:
-            tgt_lang_nllb = to_nllb_code(tgt_lang)
-            out_srt_final = f"{base}_{tgt_lang_nllb}_final.srt"
+            # EXTRACT THE 'code' STRING FROM THE DICTIONARY OBJECT
+            if isinstance(tgt_lang, dict):
+                # We know from the JSON structure that the NLLB-compatible code is in the 'code' key
+                tgt_code_str = tgt_lang.get('code')
+            else:
+                # Fallback for simple string codes passed directly (e.g., 'hin_Deva')
+                tgt_code_str = tgt_lang
 
+            # Safety check: Ensure we have a string code before proceeding
+            if not tgt_code_str or not isinstance(tgt_code_str, str):
+                print(f"[ERROR] Skipping invalid or empty target language object: {tgt_lang}")
+                continue
 
+            # Now tgt_code_str is guaranteed to be a string like 'hi' or 'mr'
+            tgt_lang_nllb = to_nllb_code(tgt_code_str)
+            out_srt_final = os.path.join(output_dir, f"{base}_{tgt_lang_nllb}_final.srt")
 
             # ✅ If source is English → use sentence-based SRT translation
             if src_lang_nllb.startswith("eng"):
@@ -1958,7 +1973,7 @@ def process(input_path, job_id, **kwargs):
                 print(f"[SRT-TRANSLATE] Final translated SRT (English src) → {out_srt_final}")
                 jobs[job_id]["progress"] = 40
                 jobs[job_id]["status"] = "asr"
-                update(40, f"[SRT-TRANSLATE] Final translated SRT (English src) → {out_srt_final}")
+                update(40, "asr", f"[SRT-TRANSLATE] Final translated SRT (English src) → {out_srt_final}")
 
 
             # ✅ Otherwise → use batched segment translation
@@ -1989,15 +2004,15 @@ def process(input_path, job_id, **kwargs):
             # --- Subs Video ---
             ass_file = out_srt_final.replace(".srt", ".ass")
             convert_srt_to_ass(out_srt_final, ass_file, tgt_lang_nllb)
-            out_video_subs = f"{base}_{tgt_lang_nllb}_subs.mp4"
+            out_video_subs = os.path.join(output_dir, f"{base}_{tgt_lang_nllb}_subs.mp4")
             subprocess.run([
                 "ffmpeg", "-y", "-i", input_path, "-vf", f"ass={ass_file}",
                 "-c:v", "libx264", "-preset", "fast", "-c:a", "copy", out_video_subs
             ], check=True)
             print(f"[SAVE] Video with subs → {out_video_subs}")
-            jobs[job_id]["progress"] = 80
+            jobs[job_id]["progress"] = 70
             jobs[job_id]["status"] = "translate"
-            update(80, f"[SAVE] Video with subs → {out_video_subs}")
+            update(70, "translate", f"[SAVE] Video with subs → {out_video_subs}")
 
             # --- Dubbed Video (TTS) ---
             subs = pysubs2.load(out_srt_final, encoding="utf-8")
@@ -2017,10 +2032,10 @@ def process(input_path, job_id, **kwargs):
             video_duration = float(probe["format"]["duration"]) * 1000
             tts_audio = speedup_audio_to_fit_segment(tts_audio, int(video_duration))
 
-            out_audio_file = f"{base}_{tgt_lang_nllb}_tts.mp3"
+            out_audio_file = os.path.join(output_dir, f"{base}_{tgt_lang_nllb}_tts.mp3")
             tts_audio.export(out_audio_file, format="mp3")
 
-            out_video_tts = f"{base}_{tgt_lang_nllb}_tts.mp4"
+            out_video_tts = os.path.join(output_dir, f"{base}_{tgt_lang_nllb}_tts.mp4")
             subprocess.run([
                 "ffmpeg", "-y", "-i", input_path, "-i", out_audio_file,
                 "-map", "0:v:0", "-map", "1:a:0",
@@ -2030,7 +2045,7 @@ def process(input_path, job_id, **kwargs):
             print(f"[SAVE] Dubbed video → {out_video_tts}")
             jobs[job_id]["progress"] = 80
             jobs[job_id]["status"] = "translate"
-            update(80, f"[SAVE] Dubbed video → {out_video_tts}")
+            update(80, "translate", f"[SAVE] Dubbed video → {out_video_tts}")
 
             all_outputs["translations"].append({
                 "lang": tgt_lang_nllb,
@@ -2047,7 +2062,7 @@ def process(input_path, job_id, **kwargs):
         jobs[job_id]["progress"] = 100
         jobs[job_id]["status"] = "done"
         jobs[job_id]['all_outputs'] = all_outputs["translations"]
-        update(100, f"Whisper Original SRT: {all_outputs['original_srt']}")
+        update(100, "done", f"Whisper Original SRT: {all_outputs['original_srt']}")
 
         for t in all_outputs["translations"]:
             print(f"\n[{t['lang']}]")

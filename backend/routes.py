@@ -100,6 +100,42 @@ def job_status(job_id):
         return jsonify({"error": "Job not found"}), 404
     return jsonify(job)
 
+@app.route("/api/download", methods=["GET"])
+def download_file():
+    # The path will be received as a query parameter (e.g., ?path=processed/job_id/file.srt)
+    file_path = request.args.get("path")
+
+    if not file_path:
+        return jsonify({"error": "Missing file path"}), 400
+
+    if not os.path.exists(file_path):
+        return jsonify({"error": "File not found"}), 404
+
+    # Extract the directory and filename to use send_from_directory safely
+    # This prevents directory traversal attacks by ensuring only files within
+    # a specified root directory can be served.
+    root_dir = os.path.dirname(file_path) # e.g., 'processed/job_id'
+    file_name = os.path.basename(file_path) # e.g., 'my_video_hin_Deva_final.srt'
+
+    # Check if the file is in a safe/known location (like PROCESSED_FOLDER)
+    # The PROCESSED_FOLDER constant is needed here.
+
+    # You might need to import PROCESSED_FOLDER from a shared config or define it here
+    PROCESSED_FOLDER = "processed"
+
+    # Ensure the root_dir starts with the safe PROCESSED_FOLDER path
+    if not root_dir.startswith(PROCESSED_FOLDER):
+        return jsonify({"error": "Invalid file path access"}), 403
+
+    return send_from_directory(
+        directory=root_dir,
+        path=file_name,
+        as_attachment=True,
+        # Suggested to use safe_name from subtitle.py to provide a clean name
+        # We can just use the file_name as is for simplicity
+        download_name=file_name
+    )
+
 
 if __name__ == "__main__":
     app.run(debug=True, host='0.0.0.0', port=5000)
