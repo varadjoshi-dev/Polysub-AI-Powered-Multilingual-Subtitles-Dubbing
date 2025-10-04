@@ -1881,5 +1881,179 @@ def main():
             print(f"  TTS Audio:    {t['tts_audio']}")
             print(f"  Dubbed Video: {t['dubbed_video']}")
 
+def process(input_path, **kwargs):
+
+    job_id = kwargs.get("job_id")
+    enableTts = kwargs.get("enableTts", False)
+    enableRealtime = kwargs.get("enableRealtime", False)
+    generateSrt = kwargs.get("generateSrt", True)
+    target_langs = kwargs.get("target_lang", "hin_Deva")
+    language=None
+
+    # init job
+    if job_id:
+        jobs[job_id]["status"] = "queued"
+        jobs[job_id]["progress"] = 0
+        jobs[job_id]["logs"] = []
+
+    def update(progress, status, message):
+        """Update job status & logs."""
+        if job_id:
+            jobs[job_id]["progress"] = progress
+            jobs[job_id]["status"] = status
+            jobs[job_id]["logs"].append(message)
+        print(f"[{job_id}] {message}")
+
+    if not os.path.isfile(input_path):
+        raise FileNotFoundError(f"Input not found: {input_path}")
+
+    base = safe_filename(os.path.splitext(os.path.basename(input_path))[0])
+
+    update(10, "upload", "Running Whisper transcription...")
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # === Step 1: Transcription ===
+        audio_path = extract_audio_if_video(input_path, tmpdir)
+
+        segments, detected_lang, all_words = transcribe_in_chunks(
+            audio_path, language)
+        src_lang_nllb = to_nllb_code(detected_lang or "en")
+        print(f"[SRC] Using source language: {detected_lang} → {src_lang_nllb}")
+
+        # === Step 2: Build audio-driven subtitles (original SRT) ===
+        audio_driven_segments = build_audio_driven_subs(
+            all_words,
+            max_duration_s=5.0,
+            max_chars=42,
+            silence_gap_s=0.6
+        )
+
+        out_srt_original = f"{base}_{src_lang_nllb}_original.srt"
+        with open(out_srt_original, "w", encoding="utf-8") as f:
+            f.write(segments_to_srt(audio_driven_segments))
+        print(f"[SAVE] Whisper SRT (AUDIO-DRIVEN) → {out_srt_original}")
+
+        all_outputs = {"original_srt": out_srt_original, "translations": []}
+
+        jobs[job_id]["progress"] = 25
+        jobs[job_id]["status"] = "asr"
+        update(25, f"[SAVE] Whisper SRT (AUDIO-DRIVEN) → {out_srt_original}")
+
+        # === Step 3: Process each target language ===
+        for tgt_lang in target_langs:
+            tgt_lang_nllb = to_nllb_code(tgt_lang)
+            out_srt_final = f"{base}_{tgt_lang_nllb}_final.srt"
+
+
+
+            # ✅ If source is English → use sentence-based SRT translation
+            if src_lang_nllb.startswith("eng"):
+                translate_srt_file_segment(
+                    out_srt_original,
+                    out_srt_final,
+                    src_lang_nllb,
+                    tgt_lang_nllb
+                )
+                print(f"[SRT-TRANSLATE] Final translated SRT (English src) → {out_srt_final}")
+                jobs[job_id]["progress"] = 40
+                jobs[job_id]["status"] = "asr"
+                update(40, f"[SRT-TRANSLATE] Final translated SRT (English src) → {out_srt_final}")
+
+
+            # ✅ Otherwise → use batched segment translation
+            else:
+                subs = pysubs2.load(out_srt_original, encoding="utf-8")
+                segments_for_batch = [
+                    {"start": ev.start/1000, "end": ev.end/1000, "text": ev.text}
+                    for ev in subs
+                ]
+                translated_segments = translate_segments_nllb_batched(
+                    segments_for_batch,
+                    src_lang_nllb,
+                    tgt_lang_nllb
+                )
+
+                final_events = []
+                for seg in translated_segments:
+                    final_events.append(pysubs2.SSAEvent(
+                        start=int(seg["start"]*1000),
+                        end=int(seg["end"]*1000),
+                        text=seg["text"]
+                    ))
+                ssa = pysubs2.SSAFile()
+                ssa.events = final_events
+                ssa.save(out_srt_final, format_="srt", encoding="utf-8")
+                print(f"[BATCHED-TRANSLATE] Final translated SRT (non-English src) → {out_srt_final}")
+
+            # --- Subs Video ---
+            ass_file = out_srt_final.replace(".srt", ".ass")
+            convert_srt_to_ass(out_srt_final, ass_file, tgt_lang_nllb)
+            out_video_subs = f"{base}_{tgt_lang_nllb}_subs.mp4"
+            subprocess.run([
+                "ffmpeg", "-y", "-i", input_path, "-vf", f"ass={ass_file}",
+                "-c:v", "libx264", "-preset", "fast", "-c:a", "copy", out_video_subs
+            ], check=True)
+            print(f"[SAVE] Video with subs → {out_video_subs}")
+            jobs[job_id]["progress"] = 80
+            jobs[job_id]["status"] = "translate"
+            update(80, f"[SAVE] Video with subs → {out_video_subs}")
+
+            # --- Dubbed Video (TTS) ---
+            subs = pysubs2.load(out_srt_final, encoding="utf-8")
+            full_text = " ".join([s.text.strip() for s in subs if s.text.strip()])
+            tts_model = get_tts_model(tgt_lang_nllb)
+            wav_out = tts_model.synthesis(full_text)
+
+            y = wav_out["x"]
+            sr = int(wav_out["sampling_rate"])
+            if y.ndim > 1:
+                y = y.mean(axis=1)
+            y = y / max(1.0, np.max(np.abs(y))) * 0.9
+            tensor_int16 = (y * 32767).astype(np.int16)
+            tts_audio = AudioSegment(tensor_int16.tobytes(), frame_rate=sr, sample_width=2, channels=1)
+
+            probe = ffmpeg.probe(input_path)
+            video_duration = float(probe["format"]["duration"]) * 1000
+            tts_audio = speedup_audio_to_fit_segment(tts_audio, int(video_duration))
+
+            out_audio_file = f"{base}_{tgt_lang_nllb}_tts.mp3"
+            tts_audio.export(out_audio_file, format="mp3")
+
+            out_video_tts = f"{base}_{tgt_lang_nllb}_tts.mp4"
+            subprocess.run([
+                "ffmpeg", "-y", "-i", input_path, "-i", out_audio_file,
+                "-map", "0:v:0", "-map", "1:a:0",
+                "-c:v", "libx264", "-preset", "fast",
+                "-c:a", "aac", "-b:a", "192k", "-shortest", out_video_tts
+            ], check=True)
+            print(f"[SAVE] Dubbed video → {out_video_tts}")
+            jobs[job_id]["progress"] = 80
+            jobs[job_id]["status"] = "translate"
+            update(80, f"[SAVE] Dubbed video → {out_video_tts}")
+
+            all_outputs["translations"].append({
+                "lang": tgt_lang_nllb,
+                "srt": out_srt_final,
+                "subs_video": out_video_subs,
+                "tts_audio": out_audio_file,
+                "dubbed_video": out_video_tts,
+            })
+
+        # === Summary ===
+        print("\n=== OUTPUTS ===")
+        print(f"Whisper Original SRT: {all_outputs['original_srt']}")
+
+        jobs[job_id]["progress"] = 100
+        jobs[job_id]["status"] = "done"
+        jobs[job_id]['all_outputs'] = all_outputs["translations"]
+        update(100, f"Whisper Original SRT: {all_outputs['original_srt']}")
+
+        for t in all_outputs["translations"]:
+            print(f"\n[{t['lang']}]")
+            print(f"  Final SRT:    {t['srt']}")
+            print(f"  Subs Video:   {t['subs_video']}")
+            print(f"  TTS Audio:    {t['tts_audio']}")
+            print(f"  Dubbed Video: {t['dubbed_video']}")
+
 if __name__ == "__main__":
     main()
