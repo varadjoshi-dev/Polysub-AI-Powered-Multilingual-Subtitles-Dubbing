@@ -39,7 +39,7 @@ export default function Page() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.5, delay: 0.2 }}
               >
-                Translate, Subtitle, and Dub your videos in 200+ languages instantly.
+                Translate, Subtitle, and Dub your videos in 150+ languages instantly.
               </motion.p>
               <motion.div
                 className="flex flex-wrap gap-3"
@@ -68,8 +68,8 @@ export default function Page() {
               >
                 <p className="text-sm text-foreground/70">
                   The system leverages Whisper for accurate speech recognition, Meta’s NLLB for multilingual
-                  translation, and integrates FFmpeg for media processing. For natural voice output, it uses edge-tts
-                  (Microsoft Neural TTS). Delivers fully translated, dubbed, and subtitled video output.
+                  translation, and integrates FFmpeg for media processing. For natural voice output, it uses meta-mms. 
+                  Delivers fully translated, dubbed, and subtitled video output.
                 </p>
               </motion.div>
             </motion.div>
@@ -116,7 +116,7 @@ export default function Page() {
             <FeatureItem
               icon={<Languages className="h-5 w-5" />}
               title="Multilingual subtitles"
-              desc="Generate subtitles in 200+ languages."
+              desc="Generate subtitles in 150+ languages."
             />
             <FeatureItem
               icon={<Mic2 className="h-5 w-5" />}
