@@ -68,7 +68,7 @@ export default function Page() {
               >
                 <p className="text-sm text-foreground/70">
                   The system leverages Whisper for accurate speech recognition, Meta’s NLLB for multilingual
-                  translation, and integrates FFmpeg for media processing. For natural voice output, it uses meta-mms. 
+                  translation, and integrates FFmpeg for media processing. For natural voice output, it uses Meta MMS-TTS. 
                   Delivers fully translated, dubbed, and subtitled video output.
                 </p>
               </motion.div>

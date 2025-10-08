@@ -203,7 +203,7 @@ export function LanguageMultiSelect({
         aria-expanded={open}
       >
         <span className="truncate">
-          {value.length === 0 ? "Select languages (200+ supported)" : value.map((l) => l.name).join(", ")}
+          {value.length === 0 ? "Select languages (150+ supported)" : value.map((l) => l.name).join(", ")}
         </span>
         <ChevronDown className="ml-2 h-4 w-4" />
       </Button>
