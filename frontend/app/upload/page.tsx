@@ -99,7 +99,7 @@ export default function UploadPage() {
           <section className="space-y-3">
             <Label className="text-sm font-medium">Languages</Label>
             <LanguageMultiSelect value={langs} onChange={setLangs} />
-            <p className="text-xs text-foreground/60">200+ supported languages</p>
+            <p className="text-xs text-foreground/60">150+ supported languages</p>
           </section>
 
           <section className="space-y-3">
