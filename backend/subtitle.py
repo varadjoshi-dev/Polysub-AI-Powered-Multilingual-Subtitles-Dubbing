@@ -2006,9 +2006,16 @@ def process(input_path, job_id, **kwargs):
             convert_srt_to_ass(out_srt_final, ass_file, tgt_lang_nllb)
             out_video_subs = os.path.join(output_dir, f"{base}_{tgt_lang_nllb}_subs.mp4")
             subprocess.run([
-                "ffmpeg", "-y", "-i", input_path, "-vf", f"ass={ass_file}",
+                "ffmpeg", "-y", "-i", input_path, "-vf", f"ass={ass_file.replace(os.path.sep, '/')}",
                 "-c:v", "libx264", "-preset", "fast", "-c:a", "copy", out_video_subs
             ], check=True)
+
+#             ass_path_escaped = ass_file.replace('\\', '\\\\')
+#             subprocess.run([
+#                 "ffmpeg", "-y", "-i", input_path, "-vf", f"ass={ass_path_escaped}",
+#                 "-c:v", "libx264", "-preset", "fast", "-c:a", "copy", out_video_subs
+#             ], check=True)
+
             print(f"[SAVE] Video with subs → {out_video_subs}")
             jobs[job_id]["progress"] = 70
             jobs[job_id]["status"] = "translate"
