@@ -23,7 +23,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "PolySub – AI Multilingual Subtitles & Dubbing",
-  description: "Translate, subtitle, and dub your videos in 200+ languages instantly.",
+  description: "Translate, subtitle, and dub your videos in 150+ languages instantly.",
   generator: "Varad",
   icons: {
     icon: [
