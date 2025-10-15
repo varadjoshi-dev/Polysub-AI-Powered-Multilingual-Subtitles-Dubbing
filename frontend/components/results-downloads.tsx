@@ -56,13 +56,17 @@ export function ResultsDownloads({ job }: { job: JobData }) {
        // Create a map: { NLLB_CODE: outputObject }
        const outputMap = new Map(job.all_outputs.map(out => [out.lang, out]));
 
-       // Map the selected languages (job.langs) to include the output paths
-       return job.langs.map(l => ({
-         ...l,
-         // l.code (e.g., 'hin_Deva') is used by the backend as 'lang' for mapping
-         output: outputMap.get(l.code),
-       }));
-     }, [job.langs, job.all_outputs]);
+          // Map the selected languages (job.langs) to include the output paths
+          return job.langs.map(l => {
+            const outputCode = l.code === 'hi' ? 'hin_Deva' : l.code;
+
+            return {
+              ...l,
+              // Use the determined outputCode for lookup
+              output: outputMap.get(outputCode),
+            }
+          });
+        }, [job.langs, job.all_outputs]);
 
     /**
      * Fetches the file from the Flask server and triggers the download.
